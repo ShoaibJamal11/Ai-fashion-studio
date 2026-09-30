@@ -1,0 +1,8 @@
+﻿gradio
+gradio_client
+rembg[cpu]
+python-dotenv
+pillow
+requests
+huggingface_hub
+onnxruntime
