@@ -66,4 +66,4 @@ with gr.Blocks(css=custom_css, title="AI Fashion Studio") as demo:
 
 if __name__ == "__main__":
     # share=True creates a public 72-hour link accessible from mobile phones anywhere
-    demo.launch(share=True)
+    demo.launch(server_name="0.0.0.0", server_port=int(os.environ.get("PORT", 7860)))
