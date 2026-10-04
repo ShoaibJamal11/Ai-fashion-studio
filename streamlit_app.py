@@ -3,10 +3,13 @@ import shutil
 import streamlit as st
 
 # ── Bridge Streamlit Cloud secrets → os.environ (must happen before engine imports)
-if "HF_TOKEN" in st.secrets:
-    os.environ["HF_TOKEN"] = st.secrets["HF_TOKEN"]
-if "REPLICATE_API_TOKEN" in st.secrets:
-    os.environ["REPLICATE_API_TOKEN"] = st.secrets["REPLICATE_API_TOKEN"]
+try:
+    if "HF_TOKEN" in st.secrets:
+        os.environ["HF_TOKEN"] = st.secrets["HF_TOKEN"]
+    if "REPLICATE_API_TOKEN" in st.secrets:
+        os.environ["REPLICATE_API_TOKEN"] = st.secrets["REPLICATE_API_TOKEN"]
+except Exception:
+    pass
 
 from preprocess import clean_garment_background
 from vton_engine import run_vton
@@ -47,23 +50,38 @@ if st.button("✨ Generate Photoshoot & Reel", type="primary", use_container_wid
                 clean_garment_background(garment_path, cleaned_path)
                 active_garment = cleaned_path
 
+            vton_success = False
+            tryon_path = None
             st.write("👕 Running Virtual Try-On...")
-            tryon_path = run_vton(active_garment, model_path)
+            try:
+                tryon_path = run_vton(active_garment, model_path)
+                vton_success = True
+            except Exception as e:
+                err_msg = str(e)
+                if "ZeroGPU" in err_msg or "quota" in err_msg.lower():
+                    st.error(
+                        "⚠️ Hugging Face ZeroGPU quota exceed ho gaya hai. Meharbani karke Streamlit Cloud settings mein `REPLICATE_API_TOKEN` add karein ya thori der baad koshish karein."
+                    )
+                else:
+                    st.error(f"⚠️ Virtual Try-On mein error aaya: {err_msg}")
+                status.update(label="Virtual Try-On Failed", state="error", expanded=True)
             
             video_generated = False
             reel_path = "output/web_reel.mp4"
-            st.write("🎬 Rendering Runway Video Reel...")
-            try:
-                generate_fashion_reel(tryon_path, reel_path)
-                video_generated = True
-            except Exception as e:
-                st.warning(f"Video generation space busy tha ya response delay hua: {e}")
-            
-            status.update(label="Try-On Complete!", state="complete", expanded=False)
+            if vton_success and tryon_path:
+                st.write("🎬 Rendering Runway Video Reel...")
+                try:
+                    generate_fashion_reel(tryon_path, reel_path)
+                    video_generated = True
+                except Exception as e:
+                    st.warning(f"Video generation space busy tha ya response delay hua: {e}")
+                
+                status.update(label="Photoshoot Complete!", state="complete", expanded=False)
 
-        st.subheader("📸 Generated Try-On Result")
-        st.image(tryon_path, use_container_width=True)
+        if vton_success and tryon_path:
+            st.subheader("📸 Generated Try-On Result")
+            st.image(tryon_path, use_container_width=True)
 
-        if video_generated and os.path.exists(reel_path):
-            st.subheader("🎥 9:16 Fashion Runway Reel")
-            st.video(reel_path)
+            if video_generated and os.path.exists(reel_path):
+                st.subheader("🎥 9:16 Fashion Runway Reel")
+                st.video(reel_path)

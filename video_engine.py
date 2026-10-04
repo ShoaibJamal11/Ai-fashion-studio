@@ -231,6 +231,16 @@ def generate_fashion_reel(
     """
     os.makedirs(os.path.dirname(os.path.abspath(output_path)), exist_ok=True)
 
+    # If image_path is a web URL, download it to disk first
+    if isinstance(image_path, str) and (image_path.startswith("http://") or image_path.startswith("https://")):
+        os.makedirs("output", exist_ok=True)
+        temp_img = os.path.join("output", "temp_input_image.png")
+        resp = requests.get(image_path, timeout=60)
+        resp.raise_for_status()
+        with open(temp_img, "wb") as f:
+            f.write(resp.content)
+        image_path = os.path.abspath(temp_img)
+
     # Pre-initialise error tracker strings so they are ALWAYS in scope.
     # Python deletes 'except … as var' bindings the moment the except block
     # exits — referencing them afterwards causes UnboundLocalError.  We
