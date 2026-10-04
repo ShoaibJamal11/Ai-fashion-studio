@@ -9,7 +9,7 @@ load_dotenv()
 
 
 # ---------------------------------------------------------------------------
-# Defensive filepath extractor (handles all Gradio return shapes)
+# Defensive filepath extractor (handles all Gradio / Replicate return shapes)
 # ---------------------------------------------------------------------------
 def _extract_filepath(data) -> str:
     """
@@ -84,9 +84,14 @@ def _generate_via_replicate(image_path: str, output_path: str) -> str:
 
     print("🚀 [Engine A] Using Replicate stable-video-diffusion…")
 
+    # Sanitise the token — strip whitespace and any stray quotes that may
+    # arrive from Streamlit secrets or .env values, preventing 401 errors.
+    token = os.environ.get("REPLICATE_API_TOKEN", "").strip().strip('"').strip("'")
+    client = replicate.Client(api_token=token)
+
     # Dynamically resolve latest version — never rely on a stale hash
     try:
-        model = replicate.models.get("stability-ai/stable-video-diffusion")
+        model = client.models.get("stability-ai/stable-video-diffusion")
         version_id = model.latest_version.id
         model_ref  = f"stability-ai/stable-video-diffusion:{version_id}"
         print(f"   ℹ️  SVD version: {version_id[:8]}…")
@@ -97,7 +102,7 @@ def _generate_via_replicate(image_path: str, output_path: str) -> str:
         print(f"   ⚠️  Could not fetch latest SVD version ({e}). Using fallback.")
 
     with open(image_path, "rb") as img_f:
-        output = replicate.run(
+        output = client.run(
             model_ref,
             input={
                 "input_image":       img_f,
@@ -225,15 +230,27 @@ def generate_fashion_reel(
         RuntimeError if both engines fail, with full error details.
     """
     os.makedirs(os.path.dirname(os.path.abspath(output_path)), exist_ok=True)
-    replicate_token = os.getenv("REPLICATE_API_TOKEN")
+
+    # Pre-initialise error tracker strings so they are ALWAYS in scope.
+    # Python deletes 'except … as var' bindings the moment the except block
+    # exits — referencing them afterwards causes UnboundLocalError.  We
+    # capture the message into these plain strings before the block ends.
+    err_replicate: str | None = None
+    err_hf:        str | None = None
+
+    # Sanitise token once here (also done inside _generate_via_replicate,
+    # but needed here to decide whether to attempt Engine A at all).
+    replicate_token = os.environ.get("REPLICATE_API_TOKEN", "").strip().strip('"').strip("'")
 
     # ── Engine A: Replicate ──────────────────────────────────────────────────
     if replicate_token:
         try:
             return _generate_via_replicate(image_path, output_path)
-        except Exception as exc_a:
+        except Exception as exc:
+            # Capture NOW — 'exc' is deleted by Python when this block exits
+            err_replicate = f"{type(exc).__name__}: {exc}"
             print(f"\n⚠️  [Engine A] Replicate failed — falling back to HF Space.")
-            print(f"   Error detail: {type(exc_a).__name__}: {exc_a}")
+            print(f"   Error detail: {err_replicate}")
             traceback.print_exc()
     else:
         print("ℹ️  REPLICATE_API_TOKEN not set — skipping Engine A, using HF Space directly.")
@@ -241,14 +258,16 @@ def generate_fashion_reel(
     # ── Engine B: Hugging Face Space ─────────────────────────────────────────
     try:
         return _generate_via_hf_space(image_path, output_path)
-    except Exception as exc_b:
-        err_detail = (
-            f"[Engine B] HF Space failed: {type(exc_b).__name__}: {exc_b}\n"
-            f"{traceback.format_exc()}"
-        )
-        print(f"\n❌ {err_detail}")
-        raise RuntimeError(
-            "Both video engines failed.\n"
-            + (f"[Engine A] Replicate: {exc_a}\n" if replicate_token else "")
-            + f"[Engine B] HF Space : {exc_b}"
-        ) from exc_b
+    except Exception as exc:
+        # Capture NOW — 'exc' is deleted by Python when this block exits
+        err_hf = f"{type(exc).__name__}: {exc}\n{traceback.format_exc()}"
+        print(f"\n❌ [Engine B] HF Space failed:\n{err_hf}")
+
+    # Both engines failed — build the error from the pre-captured strings,
+    # never from the now-deleted except variables.
+    raise RuntimeError(
+        "Video Generation Failed.\n"
+        + (f"Replicate: {err_replicate}\n" if err_replicate is not None
+           else "Replicate: not attempted\n")
+        + f"HF Space: {err_hf}"
+    )
