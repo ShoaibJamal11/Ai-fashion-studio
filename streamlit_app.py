@@ -1,6 +1,11 @@
 ﻿import os
 import shutil
 import streamlit as st
+
+# Bridge Streamlit Cloud secrets to environment variables for background engines
+if "HF_TOKEN" in st.secrets:
+    os.environ["HF_TOKEN"] = st.secrets["HF_TOKEN"]
+
 from preprocess import clean_garment_background
 from vton_engine import run_vton
 from video_engine import generate_fashion_reel
