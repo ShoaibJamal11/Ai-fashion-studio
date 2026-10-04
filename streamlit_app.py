@@ -1,10 +1,12 @@
-﻿import os
+import os
 import shutil
 import streamlit as st
 
-# Bridge Streamlit Cloud secrets to environment variables
+# ── Bridge Streamlit Cloud secrets → os.environ (must happen before engine imports)
 if "HF_TOKEN" in st.secrets:
     os.environ["HF_TOKEN"] = st.secrets["HF_TOKEN"]
+if "REPLICATE_API_TOKEN" in st.secrets:
+    os.environ["REPLICATE_API_TOKEN"] = st.secrets["REPLICATE_API_TOKEN"]
 
 from preprocess import clean_garment_background
 from vton_engine import run_vton
