@@ -2,7 +2,7 @@
 import shutil
 import streamlit as st
 
-# Bridge Streamlit Cloud secrets to environment variables for background engines
+# Bridge Streamlit Cloud secrets to environment variables
 if "HF_TOKEN" in st.secrets:
     os.environ["HF_TOKEN"] = st.secrets["HF_TOKEN"]
 
@@ -48,14 +48,20 @@ if st.button("✨ Generate Photoshoot & Reel", type="primary", use_container_wid
             st.write("👕 Running Virtual Try-On...")
             tryon_path = run_vton(active_garment, model_path)
             
-            st.write("🎬 Rendering Runway Video Reel (~60s)...")
+            video_generated = False
             reel_path = "output/web_reel.mp4"
-            generate_fashion_reel(tryon_path, reel_path)
+            st.write("🎬 Rendering Runway Video Reel...")
+            try:
+                generate_fashion_reel(tryon_path, reel_path)
+                video_generated = True
+            except Exception as e:
+                st.warning(f"Video generation space busy tha ya response delay hua: {e}")
             
-            status.update(label="Complete!", state="complete", expanded=False)
+            status.update(label="Try-On Complete!", state="complete", expanded=False)
 
         st.subheader("📸 Generated Try-On Result")
         st.image(tryon_path, use_container_width=True)
 
-        st.subheader("🎥 9:16 Fashion Runway Reel")
-        st.video(reel_path)
+        if video_generated and os.path.exists(reel_path):
+            st.subheader("🎥 9:16 Fashion Runway Reel")
+            st.video(reel_path)
